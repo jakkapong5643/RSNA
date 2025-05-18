@@ -1,4 +1,3 @@
-// Toggle Navigation Menu
 document.addEventListener("DOMContentLoaded", () => {
     const menuButton = document.querySelector(".menu-button");
     const navMenu = document.getElementById("nav-menu");
@@ -20,7 +19,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Typing Effect
     const typingText = document.getElementById("typing");
     if (typingText) {
         const text = "Welcome to Research article ";
@@ -35,7 +33,6 @@ document.addEventListener("DOMContentLoaded", () => {
         })();
     }
 
-    // Button Hover Effect
     const buttons = document.querySelectorAll(".btn");
     buttons.forEach(button => {
         button.addEventListener("mouseover", () => {
@@ -48,7 +45,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Section Scroll Animation
     window.addEventListener("scroll", () => {
         const sections = document.querySelectorAll("section");
         sections.forEach(section => {
@@ -61,7 +57,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Navbar Link Hover Effect
     const navLinks = document.querySelectorAll("#nav-menu a");
     navLinks.forEach(link => {
         link.addEventListener("mouseover", () => {
@@ -76,13 +71,12 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Form Submission for Prediction
     const predictionForm = document.getElementById("predictionForm");
     const resultContainer = document.getElementById("result");
 
     if (predictionForm && resultContainer) {
         predictionForm.addEventListener("submit", async (event) => {
-            event.preventDefault();  // ป้องกันการโหลดหน้าใหม่
+            event.preventDefault();
             const formData = new FormData(predictionForm);
             const inputValues = Array.from(formData.values()).map(Number);
 
@@ -99,7 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const result = await response.json();
 
-                // แสดงผลลัพธ์การทำนาย
                 resultContainer.innerHTML = `
                     <h2>Prediction: ${result.prediction}</h2>
                     <h2>Confidence: ${result.confidence.toFixed(2)}%</h2>
