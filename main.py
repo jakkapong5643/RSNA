@@ -49,9 +49,9 @@ async def not_found(request: Request):
 async def NEW(request: Request):
     return templates.TemplateResponse("NEW.html", {"request": request})
 
-inputWeight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\inputWeightInference.csv', header=None).values
-outputWeight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\outputWeightInference.csv', header=None).values
-bias = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\bias.csv', header=None).values
+inputWeight = pd.read_csv('.\Data\OP\inputWeightInference.csv', header=None).values
+outputWeight = pd.read_csv('.\Data\OP\outputWeightInference.csv', header=None).values
+bias = pd.read_csv('.\Data\OP\bias.csv', header=None).values
 
 def maxtwoind_mammo(x):
     y = []
@@ -90,7 +90,7 @@ async def predict(data: InputData):
         H_new = 1 / (1 + np.exp(-(X_new @ inputWeight + np.tile(bias, (X_new.shape[0], 1)))))
         outputNew = np.dot(H_new, outputWeight)
 
-        prediction = np.argmax(outputNew)  # เปลี่ยนวิธีคำนวณ prediction ถ้าจำเป็น
+        prediction = np.argmax(outputNew)
         confidence = np.max(outputNew)
 
         if prediction == 1:
@@ -184,8 +184,8 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
                 "image_path": f"data:image/jpeg;base64,{base64.b64encode(contents).decode()}"
             })
 
-        input_weight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\RSNA\240\input_weight.csv', header=None).values
-        output_weight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\RSNA\240\output_weight.csv', header=None).values
+        input_weight = pd.read_csv('.\Data\input_weight.csv', header=None).values
+        output_weight = pd.read_csv('.\Data\output_weight.csv', header=None).values
 
         features_array = features_df.values
         H_infer = expit(np.dot(features_array, input_weight) + 4)
@@ -226,7 +226,6 @@ async def serve_css(file_path: str):
 async def serve_img(file_path: str):
     return FileResponse(f"static/img/{file_path}")
 
-# === เพิ่มสำหรับ Render ให้เห็นว่ามี port ถูก bind ===
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
