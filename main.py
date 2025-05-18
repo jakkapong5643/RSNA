@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import os
-from fastapi.responses import RedirectResponse
 import base64
 import numpy as np
 import pandas as pd
@@ -15,6 +14,7 @@ from PIL import Image
 from scipy.special import expit
 import cv2
 from io import BytesIO
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -49,10 +49,14 @@ async def not_found(request: Request):
 async def NEW(request: Request):
     return templates.TemplateResponse("NEW.html", {"request": request})
 
-def maxtwoind_mammo_OP(x):
+inputWeight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\inputWeightInference.csv', header=None).values
+outputWeight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\outputWeightInference.csv', header=None).values
+bias = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\OP\bias.csv', header=None).values
+
+def maxtwoind_mammo(x):
     y = []
     for i in range(x.shape[0]):
-        n = np.argmax(x[i, :])
+        n = np.argmax(x[i, :]) 
         if n == 0:
             y.append([1, 0])
         elif n == 1:
@@ -62,7 +66,7 @@ def maxtwoind_mammo_OP(x):
             break
     return np.array(y)
 
-def maxtwoindclass_mammo_OP(x):
+def maxtwoindclass_mammo(x):
     y = []
     for i in range(x.shape[0]):
         n = x[i, :]
@@ -72,70 +76,67 @@ def maxtwoindclass_mammo_OP(x):
             y.append(2)
         else:
             print("Error: Invalid prediction")
-            y.append(0)
+            y.append(0) 
     return np.array(y)
 
-def To_Class(x):
-    return ["A1", "A2", "A3", "A4", "B", "C", "D"][x]
+class InputData(BaseModel):
+    input_values: list[float]
 
-inputWeight_OP = pd.read_csv('./Data/OP/inputWeightInference.csv', header=None).values
-outputWeight_OP = pd.read_csv('./Data/OP/outputWeightInference.csv', header=None).values
-bias_OP = pd.read_csv('./Data/OP/biasInference.csv', header=None).values
-
-
-@app.post("/predict_OP/")
-async def predict_OP(data: dict):
+@app.post("/predict/")
+async def predict(data: InputData):
     try:
-        input_values_OP = data["input_values_OP"]
-        X_new_OP = np.array([input_values_OP])
+        X_new = np.array([data.input_values])
+
+        H_new = 1 / (1 + np.exp(-(X_new @ inputWeight + np.tile(bias, (X_new.shape[0], 1)))))
+        outputNew = np.dot(H_new, outputWeight)
+
+        prediction = np.argmax(outputNew)  # เปลี่ยนวิธีคำนวณ prediction ถ้าจำเป็น
+        confidence = np.max(outputNew)
+
+        if prediction == 1:
+            result = "No Osteoporosis 💀"
+        elif prediction == 2:
+            result = "Yes Osteoporosis 🦴"
+        else:
+            result = "Error in Prediction"
         
-        H_new_OP = 1 / (1 + np.exp(-(X_new_OP @ inputWeight_OP + np.tile(bias_OP, (X_new_OP.shape[0], 1)))))
-        outputNew_OP = np.dot(H_new_OP, outputWeight_OP)
-
-        yNew_OP = maxtwoind_mammo_OP(outputNew_OP)
-        predictionsNew_OP = maxtwoindclass_mammo_OP(yNew_OP)
-        confidence_OP = np.max(outputNew_OP) * 100  # แปลงเป็นเปอร์เซ็นต์
-
-        prediction = predictionsNew_OP[0] if predictionsNew_OP.size > 0 else 0
-
-        result_OP = {
-            1: "No Osteoporosis 💀",
-            2: "Yes Osteoporosis 🦴"
-        }.get(prediction, "Error in Prediction")
-
-        return JSONResponse({
-            "prediction": result_OP,
-            "confidence": float(confidence_OP),
-            "status": "success"
-        })
+        return {"prediction": result, "confidence": confidence * 100}
     
     except Exception as e:
-        return JSONResponse({
-            "error": str(e),
-            "status": "error"
-        }, status_code=500)
-
+        print(f"Error in prediction: {e}")
+        return {"prediction": "Error in Prediction", "confidence": 0.0}
+    
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request):
     return templates.TemplateResponse("NEW.html", {"request": request})
-    
+
 def image_to_base64(image_path: str):
     image = Image.open(image_path)
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
+def rotate_image(image, angle):
+    height, width = image.shape[:2]
+    rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
+    rotated = cv2.warpAffine(image, rotation_matrix, (width, height), borderMode=cv2.BORDER_REFLECT)
+    return rotated
+
+def To_Class(x):
+    return ["B", "A1", "A2", "A3", "C", "D", "A4"][x]
+
+
 @app.post("/predict_RSNA", response_class=HTMLResponse)
 async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
     try:
         contents = await file.read()
-
         img = Image.open(BytesIO(contents))
 
         if img.mode == 'RGBA':
             img = img.convert('RGB')
 
-        img.save("temp_uploaded_image.jpg")  
+        img.save("temp_uploaded_image.jpg")
+
         yolo_model = YOLO('./Model/segRSNA.pt')
         results = yolo_model("temp_uploaded_image.jpg")
 
@@ -144,16 +145,30 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
 
         if results[0].masks is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu().numpy()
+            # scores = results[0].boxes.conf.cpu().numpy()
+            # class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+            # names = results[0].names
+
+            for i, box in enumerate(boxes):
+                x1, y1, x2, y2 = map(int, box)
+                # class_name = names[class_ids[i]] if names and class_ids[i] < len(names) else str(class_ids[i])
+                # label = f"{class_name}: {scores[i]*100:.2f}%"
+                cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                # cv2.putText(image, (x1, y1 - 10),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
             x1, y1, x2, y2 = map(int, boxes[0])
             cropped = image[y1:y2, x1:x2]
-
+            cropped = rotate_image(cropped, 15)
             cropped_pil = Image.fromarray(cropped)
+            
             transform = transforms.Compose([
-                transforms.Resize((64, 64)),
+                transforms.Resize((240, 240)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
             ])
+            
             img_tensor = transform(cropped_pil).unsqueeze(0)
 
             with torch.no_grad():
@@ -161,6 +176,7 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
                 features = features.view(features.size(0), -1).cpu().numpy().flatten()
 
             features_df = pd.DataFrame(features.reshape(1, -1))
+
         else:
             return templates.TemplateResponse("NEW.html", {
                 "request": request,
@@ -168,8 +184,8 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
                 "image_path": f"data:image/jpeg;base64,{base64.b64encode(contents).decode()}"
             })
 
-        input_weight = pd.read_csv('./Data/RSNA/RSNA_Augment_96/input_weight.csv', header=None).values
-        output_weight = pd.read_csv('./Data/RSNA/RSNA_Augment_96/output_weight.csv', header=None).values
+        input_weight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\RSNA\240\input_weight.csv', header=None).values
+        output_weight = pd.read_csv(r'C:\Taiwan\TestWrb\Web--Apprsnapredicted-main\Data\RSNA\240\output_weight.csv', header=None).values
 
         features_array = features_df.values
         H_infer = expit(np.dot(features_array, input_weight) + 4)
@@ -178,13 +194,18 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
         pred_class = np.argmax(output, axis=1)[0]
         confidence = np.max(output[0]) / np.sum(output[0])
 
+        pil_img = Image.fromarray(image)
+        buffer = BytesIO()
+        pil_img.save(buffer, format="JPEG")
+        seg_image_base64 = base64.b64encode(buffer.getvalue()).decode()
+
         return templates.TemplateResponse("NEW.html", {
             "request": request,
             "prediction": {
                 "class": To_Class(pred_class),
-                "confidence": round(confidence * 100, 2)
+                "confidence": round(np.max(output)/(((np.sum(output)-np.max(output))/6)+np.max(output)) * 100, 2)
             },
-            "image_path": f"data:image/jpeg;base64,{base64.b64encode(contents).decode()}"
+            "image_path": f"data:image/jpeg;base64,{seg_image_base64}"
         })
 
     except Exception as e:
@@ -192,7 +213,7 @@ async def predict_rsna_html(request: Request, file: UploadFile = File(...)):
             "request": request,
             "error": str(e)
         })
-    
+
 @app.get("/js/{file_path:path}")
 async def serve_js(file_path: str):
     return FileResponse(f"static/js/{file_path}")
@@ -204,3 +225,9 @@ async def serve_css(file_path: str):
 @app.get("/img/{file_path:path}")
 async def serve_img(file_path: str):
     return FileResponse(f"static/img/{file_path}")
+
+# === เพิ่มสำหรับ Render ให้เห็นว่ามี port ถูก bind ===
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
